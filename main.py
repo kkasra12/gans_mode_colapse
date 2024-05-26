@@ -1,3 +1,4 @@
+import gc
 import os
 import pickle
 from datetime import datetime
@@ -118,60 +119,64 @@ class Main:
         for epoch in range(num_epochs):
             # For each batch in the dataloader
             for i, (data, lbl) in enumerate(tqdm(self.dataset)):
-                ############################
-                # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
-                ###########################
-                ## Train with all-real batch
-                self.netD.zero_grad()
-                # Format batch
-                real_cpu = data.to(self.device)
-                b_size = real_cpu.size(0)
-                assert (
-                    b_size == self.batch_size
-                ), f"Batch size is {b_size} but expected {self.batch_size}"
-                label = torch.full(
-                    (b_size,), real_label, dtype=torch.float, device=self.device
-                )
-                output = self.netD(real_cpu).view(-1)
-                errD_real = self.criterion(output, label)
-                errD_real.backward()
-                # D_x = output.mean().item()
-                # can be used for further analysis (if needed)
+                gc.collect()
+                torch.cuda.empty_cache()
+                try:
+                    ############################
+                    # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+                    ###########################
+                    ## Train with all-real batch
+                    self.netD.zero_grad()
+                    # Format batch
+                    real_cpu = data.to(self.device)
+                    b_size = real_cpu.size(0)
+                    assert (
+                        b_size == self.batch_size
+                    ), f"Batch size is {b_size} but expected {self.batch_size}"
+                    label = torch.full(
+                        (b_size,), real_label, dtype=torch.float, device=self.device
+                    )
+                    output = self.netD(real_cpu).view(-1)
+                    errD_real = self.criterion(output, label)
+                    errD_real.backward()
+                    # D_x = output.mean().item()
+                    # can be used for further analysis (if needed)
 
-                ## Train with all-fake batch
-                noise = torch.randn(b_size, self.nz, 1, 1, device=self.device)
-                fake = self.netG(noise, lbl)
+                    ## Train with all-fake batch
+                    noise = torch.randn(b_size, self.nz, 1, 1, device=self.device)
+                    fake = self.netG(noise, lbl)
 
-                label.fill_(fake_label)
-                # Classify all fake batch with Discriminator
-                output = self.netD(fake.detach()).view(-1)
-                # Calculate Discriminator's loss on the all-fake batch
-                errD_fake = self.criterion(output, label)
-                errD_fake.backward()
-                # D_G_z1 = output.mean().item()
-                # can be used for further analysis (if needed)
-                errD = errD_real + errD_fake
-                self.optimizerD.step()
+                    label.fill_(fake_label)
+                    # Classify all fake batch with Discriminator
+                    output = self.netD(fake.detach()).view(-1)
+                    # Calculate Discriminator's loss on the all-fake batch
+                    errD_fake = self.criterion(output, label)
+                    errD_fake.backward()
+                    # D_G_z1 = output.mean().item()
+                    # can be used for further analysis (if needed)
+                    errD = errD_real + errD_fake
+                    self.optimizerD.step()
 
-                ############################
-                # (2) Update G network: maximize log(D(G(z)))
-                ###########################
-                self.netG.zero_grad()
-                # fake labels are real for generator cost
-                label.fill_(real_label)
-                # Since we just updated D, perform another forward pass of all-fake batch through D
-                output = self.netD(fake).view(-1)
-                # Calculate G's loss based on this output
-                errG = self.criterion(output, label)
-                errG.backward()
-                # D_G_z2 = output.mean().item()
-                # can be used for further analysis (if needed)
-                self.optimizerG.step()
+                    ############################
+                    # (2) Update G network: maximize log(D(G(z)))
+                    ###########################
+                    self.netG.zero_grad()
+                    # fake labels are real for generator cost
+                    label.fill_(real_label)
+                    # Since we just updated D, perform another forward pass of all-fake batch through D
+                    output = self.netD(fake).view(-1)
+                    # Calculate G's loss based on this output
+                    errG = self.criterion(output, label)
+                    errG.backward()
+                    # D_G_z2 = output.mean().item()
+                    # can be used for further analysis (if needed)
+                    self.optimizerG.step()
 
-                # Save Losses for plotting later
-                g_losses.append(errG.item())
-                d_losses.append(errD.item())
-
+                    # Save Losses for plotting later
+                    g_losses.append(errG.item())
+                    d_losses.append(errD.item())
+                except Exception as e:
+                    print(f"Exception occured in batch {i}, {e}")
                 # Check how the generator is doing by saving G's output on fixed_noise
                 if i % step == 0:
                     with torch.no_grad():
