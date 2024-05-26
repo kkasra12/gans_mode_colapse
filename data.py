@@ -3,10 +3,11 @@ import os
 import struct
 import urllib.request
 
-from matplotlib import pyplot as plt
-import torch
 import numpy as np
+import torch
+from matplotlib import pyplot as plt
 from torch.utils.data import IterableDataset
+from torchvision import datasets
 
 
 class MnistDataset(IterableDataset):
@@ -51,21 +52,38 @@ class MnistDataset(IterableDataset):
 
     def download(self, data: os.PathLike):
         os.makedirs(data, exist_ok=True)
+        # TODO: use these two hosts to download the data, use the other one if the first one fails
+        # hosts = [
+        #     "http://yann.lecun.com/exdb/mnist/",
+        #     "https://ossci-datasets.s3.amazonaws.com/mnist/",
+        # ]
+        # TODO: also, use these MD5 hashes to check the integrity of the downloaded files
+        # resources = [
+        #     ("train-images-idx3-ubyte.gz", "f68b3c2dcbeaaa9fbdd348bbdeb94873"),
+        #     ("train-labels-idx1-ubyte.gz", "d53e105ee54ea40749a09fcbcd1e9432"),
+        #     ("t10k-images-idx3-ubyte.gz", "9fb629c4189551a2d022fa330f9573f3"),
+        #     ("t10k-labels-idx1-ubyte.gz", "ec29112dd5afa0611ce80d1b7f02629c"),
+        # ]
+
         urls = [
-            "http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz",
-            "http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz",
-            "http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz",
-            "http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz",
+            "https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz",
+            "https://ossci-datasets.s3.amazonaws.com/mnist/train-labels-idx1-ubyte.gz",
+            "https://ossci-datasets.s3.amazonaws.com/mnist/t10k-images-idx3-ubyte.gz",
+            "https://ossci-datasets.s3.amazonaws.com/mnist/t10k-labels-idx1-ubyte.gz",
         ]
-        for url in urls:
-            filename = os.path.join(data, os.path.basename(url))
-            if not os.path.exists(filename):
-                print(f"Downloading {url} to {filename}")
-                urllib.request.urlretrieve(url, filename)
-            if not os.path.exists(filename[:-3]):
-                with gzip.open(filename, "rb") as f_in:
-                    with open(filename[:-3], "wb") as f_out:
-                        f_out.write(f_in.read())
+        try:
+            for url in urls:
+                filename = os.path.join(data, os.path.basename(url))
+                if not os.path.exists(filename):
+                    print(f"Downloading {url} to {filename}")
+                    urllib.request.urlretrieve(url, filename)
+                if not os.path.exists(filename[:-3]):
+                    with gzip.open(filename, "rb") as f_in:
+                        with open(filename[:-3], "wb") as f_out:
+                            f_out.write(f_in.read())
+        except Exception as e:
+            print(f"Failed to download the data: {e}, using pytorch functions")
+            datasets.MNIST(data, download=True)
 
     def load_data(self):
         with open(os.path.join(self.data, "train-images-idx3-ubyte"), "rb") as f:
