@@ -28,7 +28,7 @@ class Evaluate:
         # TODO: use the id to load the model and generate images
         # but now we are not using the id, so we will load the last epoch model
         last_epoch = max(
-            glob.glob(os.path.join(self.checkpoint_dir, f"{prefix}_*.pkl")),
+            glob.glob(os.path.join(self.checkpoint_dir, "vars_*.pkl")),
             key=lambda x: int(x.split("_")[1]),
         )
         with open(last_epoch, "rb") as f:
@@ -54,6 +54,9 @@ class Evaluate:
                     plt.imshow(img)
                 plt.show()
                 t = []
+
+    def fid(self, id: int):
+        pass
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import gc
+import json
 import os
 import pickle
 from datetime import datetime
@@ -26,6 +27,7 @@ class Main:
         lr: float = 0.0002,
         transform: bool = True,
         beta1: float = 0.5,
+        shared_layers: int = 0,
         workers: int = 1,
     ):
         """
@@ -48,6 +50,11 @@ class Main:
         # Dont allow to run the same id again, if the id exists, raise an error, if id==-1 then generate a new id
         # TODO: Add a json file to save each run parameters for each id
         # TODO: Change the output format to use the id in the filename
+        self.data_file = "data"
+        self.checkpoint_dir = None
+        self.run_id = None
+        self.shared_layers = shared_layers
+
         if transform:
             # TODO: Try to use transforms.RandomApply
             transform = transforms.Compose(
@@ -69,7 +76,9 @@ class Main:
         self.dataset = MnistDataset(
             data_path, batch_size=batch_size, transform=transform
         )
-
+        self.device = torch.device(
+            "cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu"
+        )
         self.nz = nz
         self.netG, self.netD = create_models(
             ngpu=ngpu,
@@ -78,12 +87,13 @@ class Main:
             ngf=ngf,
             nc=nc,
             ndf=ndf,
+            shared_layers=shared_layers,
+            device=self.device,
         )
         self.criterion = nn.BCELoss()
 
-        self.device = torch.device(
-            "cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu"
-        )
+        self.netG.to(self.device)
+        self.netD.to(self.device)
 
         # Setup Adam optimizers for both G and D
         self.optimizerD = optim.Adam(
@@ -98,9 +108,35 @@ class Main:
         num_epochs: int = 5,
         checkpoint_dir: str | os.PathLike = "./checkpoints",
         generate_images_per_epoch: int = 10,
+        run_id: int = -1,
     ):
         if checkpoint_dir:
             os.makedirs(checkpoint_dir, exist_ok=True)
+        self.checkpoint_dir = checkpoint_dir
+        self.current_data_file = os.path.join(checkpoint_dir, f"{self.data_file}.json")
+
+        last_run_id = self.find_last_run_id()
+        if run_id == -1:
+            self.run_id = last_run_id + 1
+        elif run_id <= last_run_id:
+            self.run_id = run_id
+        else:
+            raise ValueError(
+                f"run_id should be less than or equal to {last_run_id}, got {run_id},"
+                f"for more info, please check the {os.path.join(checkpoint_dir, f'{self.data_file}.json')} file."
+            )
+
+        self["num_epochs"] = num_epochs
+        self["generate_images_per_epoch"] = generate_images_per_epoch
+        self["batch_size"] = self.batch_size
+        self["shared_layers"] = self.shared_layers
+        self["nz"] = self.nz
+        self["ngf"] = self.netG.ngf
+        self["nc"] = self.netG.nc
+        self["ndf"] = self.netD.ndf
+        self["lr"] = self.optimizerD.param_groups[0]["lr"]
+        self["beta1"] = self.optimizerD.param_groups[0]["betas"][0]
+        self["device"] = self.device.type
 
         real_label = 1.0
         fake_label = 0.0
@@ -119,8 +155,6 @@ class Main:
         for epoch in range(num_epochs):
             # For each batch in the dataloader
             for i, (data, lbl) in enumerate(tqdm(self.dataset)):
-                gc.collect()
-                torch.cuda.empty_cache()
                 try:
                     ############################
                     # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -177,6 +211,8 @@ class Main:
                     d_losses.append(errD.item())
                 except Exception as e:
                     print(f"Exception occured in batch {i}, {e}")
+                    gc.collect()
+                    torch.cuda.empty_cache()
                 # Check how the generator is doing by saving G's output on fixed_noise
                 if i % step == 0:
                     with torch.no_grad():
@@ -189,18 +225,98 @@ class Main:
                     checkpoint_dir,
                     vars={"g_losses": g_losses, "d_losses": d_losses, "imgs": imgs},
                 )
+        self.checkpoint_dir = None
+
+    def __setitem__(self, key, value):
+        """
+        we will save a file with name of "{self.data_file}.json" in the checkpoint_dir,
+        the keys are "run_{self.run_id}" and the values are the key-value pairs passed to this function.
+        """
+        if self.checkpoint_dir is None:
+            return
+        new_value = {key: value}
+        with open(os.path.join(self.current_data_file), "r+") as f:
+            current_values = json.load(f)
+            the_key = f"run_{self.run_id}"
+            assert isinstance(current_values, dict), f"Bad data: {current_values}"
+            assert (
+                the_key in current_values
+            ), f"We can't find {the_key} in the data file ({self.current_data_file})."
+            current_values[the_key].update(new_value)
+            f.seek(0)
+            json.dump(current_values, f)
+
+    def __getitem__(self, key):
+        if self.checkpoint_dir is None:
+            return
+        with open(os.path.join(self.current_data_file), "r") as f:
+            return json.load(f)[f"run_{self.run_id}"].get(key)
+
+    def find_last_run_id(self, create_dict: bool = True):
+        """
+        Finds the last run ID from the data file and optionally creates a new dictionary entry.
+
+        Args:
+            create_dict (bool, optional): Whether to create a new dictionary entry. Defaults to True.
+
+        Returns:
+            int: The last run ID found in the data file.
+        """
+        with open(self.current_data_file, "a+") as f:
+            if (f_read := f.read()) != "":
+                data = json.load(f_read)
+                # note that the keys are in the format of "run_{id}"
+                last_id = max(map(lambda x: x.split("_")[1], data.keys()))
+            else:
+                data = {}
+                last_id = 0
+
+        if create_dict:
+            with open(self.current_data_file, "w") as f:
+                data[f"run_{last_id + 1}"] = {}
+                json.dump(data, f)
+            return last_id
 
     def save_checkpoint(self, epoch, checkpoint_dir, vars: dict = None):
         suffix = f"{epoch}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         torch.save(
-            self.netG.state_dict(), os.path.join(checkpoint_dir, f"netG_{suffix}.pth")
+            self.netG.state_dict(),
+            os.path.join(checkpoint_dir, (g_name := f"netG_{suffix}.pth")),
         )
         torch.save(
-            self.netD.state_dict(), os.path.join(checkpoint_dir, f"netD_{suffix}.pth")
+            self.netD.state_dict(),
+            os.path.join(checkpoint_dir, (d_name := f"netD_{suffix}.pth")),
         )
+
         if vars:
-            with open(os.path.join(checkpoint_dir, f"vars_{suffix}.pkl"), "wb") as f:
+            with open(
+                os.path.join(checkpoint_dir, (v_name := f"vars_{suffix}.pkl")), "wb"
+            ) as f:
                 pickle.dump(vars, f)
+
+        g_files = self["g_files"]
+        if g_files:
+            g_files.append(g_name)
+        else:
+            g_files = [g_name]
+        self["g_files"] = g_files
+
+        d_files = self["d_files"]
+        if d_files:
+            d_files.append(d_name)
+        else:
+            d_files = [d_name]
+        self["d_files"] = d_files
+
+        v_files = self["v_files"]
+        if v_files:
+            v_files.append(v_name)
+        else:
+            v_files = [v_name]
+        self["v_files"] = v_files
+
+    def load_checkpoint(self, checkpoint_dir, epoch):
+        raise NotImplementedError
 
 
 if __name__ == "__main__":

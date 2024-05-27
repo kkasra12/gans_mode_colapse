@@ -60,7 +60,7 @@ class Generator(nn.Module):
         self,
         ngpu: int,
         number_of_generators: int,
-        number_shared_layers: int,
+        shared_layers: int,
         nz: int,
         ngf: int,
         nc: int,
@@ -83,10 +83,16 @@ class Generator(nn.Module):
                 nc: int = 1,
         """
         super(Generator, self).__init__()
-        if number_shared_layers != 0:
+        if shared_layers != 0:
             # TODO: Implement shared layers
             raise NotImplementedError("Shared layers are not implemented yet")
         self.ngpu = ngpu
+        self.number_of_generators = number_of_generators
+        self.shared_layers = shared_layers
+        self.nz = nz
+        self.ngf = ngf
+        self.nc = nc
+
         self.models = [
             nn.Sequential(
                 # input is Z, going into a convolution
@@ -149,6 +155,9 @@ class Discriminator(nn.Module):
         """
         super(Discriminator, self).__init__()
         self.ngpu = ngpu
+        self.nc = nc
+        self.ndf = ndf
+
         self.main = nn.Sequential(
             # input is ``(nc) x 64 x 64``
             nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
@@ -178,12 +187,12 @@ class Discriminator(nn.Module):
 def create_models(
     ngpu: int,
     nlabels: int,
-    device: torch.device | str = None,
-    number_shared_layers: int = 0,
-    nz: int = 100,
-    ngf: int = 64,
-    nc: int = 1,
-    ndf=64,
+    device: torch.device | str,
+    nz: int,
+    ngf: int,
+    nc: int,
+    ndf: int,
+    shared_layers: int,
     verbose: bool = False,
 ):
     """
@@ -215,7 +224,7 @@ def create_models(
     netG = Generator(
         ngpu,
         number_of_generators=nlabels,
-        number_shared_layers=number_shared_layers,
+        shared_layers=shared_layers,
         nz=nz,
         ngf=ngf,
         nc=nc,
