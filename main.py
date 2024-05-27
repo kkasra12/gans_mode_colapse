@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from data import MnistDataset
 from model import create_models
+from evaluate import DATAFILE
 
 
 class Main:
@@ -50,10 +51,11 @@ class Main:
         # Dont allow to run the same id again, if the id exists, raise an error, if id==-1 then generate a new id
         # TODO: Add a json file to save each run parameters for each id
         # TODO: Change the output format to use the id in the filename
-        self.data_file = "data"
+        self.data_file = DATAFILE
         self.checkpoint_dir = None
         self.run_id = None
         self.shared_layers = shared_layers
+        self.ngpu = ngpu
 
         if transform:
             # TODO: Try to use transforms.RandomApply
@@ -79,6 +81,7 @@ class Main:
         self.device = torch.device(
             "cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu"
         )
+        # self.device = torch.device("cuda:0")
         self.nz = nz
         self.netG, self.netD = create_models(
             ngpu=ngpu,
@@ -91,6 +94,7 @@ class Main:
             device=self.device,
         )
         self.criterion = nn.BCELoss()
+        print(self.device)
 
         self.netG.to(self.device)
         self.netD.to(self.device)
@@ -127,6 +131,8 @@ class Main:
             )
 
         self["num_epochs"] = num_epochs
+        self["ngpu"] = self.ngpu
+        self["nlabels"] = len(self.dataset.all_classes)
         self["generate_images_per_epoch"] = generate_images_per_epoch
         self["batch_size"] = self.batch_size
         self["shared_layers"] = self.shared_layers

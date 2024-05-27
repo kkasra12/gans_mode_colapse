@@ -150,8 +150,10 @@ class MnistDataset(IterableDataset):
         ), f"Expected {self.batch_size} images, got {len(batched_imgs)}, {batched_imgs[0].shape}"
 
         if self.transform:
-            transformed_imgs = [self.transform(img) for img in batched_imgs]
-            batched_imgs = torch.stack(transformed_imgs)
+            batched_imgs = [self.transform(img) for img in batched_imgs]
+        else:
+            batched_imgs = [torch.tensor(img) for img in batched_imgs]
+        batched_imgs = torch.stack(batched_imgs)
 
         return batched_imgs, most_frequent_class
 

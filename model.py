@@ -142,6 +142,22 @@ class Generator(nn.Module):
             return torch.stack(t)
         return self.models[labels.item()](inputs)
 
+    def generate(self, num_samples: int, labels: torch.Tensor = None):
+        """
+        Generate samples from the generator.
+
+        Args:
+            num_samples (int): Number of samples to generate.
+            labels (torch.Tensor, optional): The labels tensor. if None, it will be randomly generated. Defaults to None.
+
+        Returns:
+            torch.Tensor: The generated samples.
+        """
+        if labels is None:
+            labels = torch.randint(0, self.number_of_generators, (num_samples,))
+        imgs = [self(torch.randn(1, self.nz), lbl) for lbl in labels]
+        return torch.stack(imgs)
+
 
 class Discriminator(nn.Module):
     def __init__(self, ngpu, nc=1, ndf=64):
