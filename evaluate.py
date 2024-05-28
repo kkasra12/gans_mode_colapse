@@ -69,6 +69,7 @@ class Evaluate:
                     plt.savefig(
                         f"{prefix}_{run_id}_{epoch}_generated.png", bbox_inches="tight"
                     )
+                    plt.clf()
                 else:
                     plt.show()
                 t = []
