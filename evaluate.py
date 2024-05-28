@@ -22,12 +22,12 @@ class Evaluate:
         self.checkpoint_dir = checkpoint_dir
         print("init")
 
-    def show_imgs(self, id: int = None, prefix: str = None):
+    def show_imgs(self, run_id: int = None, prefix: str = None):
         """
         Display the generated images from the saved checkpoint.
 
         Args:
-            id (int, optional): The ID of the model to load and generate images from. Defaults to None.
+            run_id (int, optional): The ID of the model to load and generate images from. Defaults to None.
             prefix (str, optional): The prefix of the saved image files. if None, it will show the images instead of saving them. Defaults to None.
 
         Raises:
@@ -36,13 +36,15 @@ class Evaluate:
         Returns:
             None
         """
-        # TODO: use the id to load the model and generate images
-        # but now we are not using the id, so we will load the last epoch model
-        last_epoch = max(
-            glob.glob(os.path.join(self.checkpoint_dir, "vars_*.pkl")),
-            key=lambda x: int(x.split("_")[1]),
-        )
-        with open(last_epoch, "rb") as f:
+        print(f"Loading the data file {DATAFILE}.json...")
+        with open(os.path.join(self.checkpoint_dir, f"{DATAFILE}.json")) as f:
+            run_data = json.load(f).get(f"run_{run_id}")
+            if run_data is None:
+                raise ValueError("The run_id is not found in the data file.")
+            v_file = run_data["v_files"][-1]
+
+        # this v_file is the last epoch variables file containing the images, g_loss, d_loss.
+        with open(os.path.join(self.checkpoint_dir, v_file), "rb") as f:
             saved_vars = pickle.load(f)
 
         if "imgs" not in saved_vars:
@@ -53,18 +55,34 @@ class Evaluate:
         imgs = np.array(saved_vars["imgs"])
         print(imgs.shape)
         t = []
-        index = 0
-        for img in imgs.reshape(imgs.shape[0], -1, imgs.shape[-1]):
+        for epoch, img in enumerate(
+            imgs.reshape(imgs.shape[0], -1, imgs.shape[-1]), start=1
+        ):
             t.append(img)
             if len(t) == 10:
                 img = np.concatenate(t, axis=1)
+                plt.imshow(img, cmap="gray")
+                plt.title(f"Generated images from run_{run_id} epoch {epoch} ")
+                plt.axis("off")
+
                 if prefix:
-                    plt.imsave(f"{prefix}_{index}.png", img)
-                    index += 1
+                    plt.savefig(
+                        f"{prefix}_{run_id}_{epoch}_generated.png", bbox_inches="tight"
+                    )
                 else:
-                    plt.imshow(img)
-                plt.show()
+                    plt.show()
                 t = []
+
+        # also, lets plot the losses
+        plt.plot(saved_vars["g_losses"][:50], label="Generator Loss")
+        plt.plot(saved_vars["d_losses"][:50], label="Discriminator Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
+        if prefix:
+            plt.savefig(f"{prefix}_{run_id}_loss.png")
+        else:
+            plt.show()
 
     def fid(self, run_id: int, num_epochs: int = 100, batch_size: int = 10):
         """

@@ -25,7 +25,7 @@ class Main:
         ngf: int = 64,
         nc: int = 1,
         ndf: int = 64,
-        lr: float = 0.0002,
+        lr: float = 0.002,
         transform: bool = True,
         beta1: float = 0.5,
         shared_layers: int = 0,
