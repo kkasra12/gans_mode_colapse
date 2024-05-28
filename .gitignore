@@ -3,5 +3,5 @@ archive*
 checkpoints/
 *data*/
 *.ipynb
-tmp.py
 _*
+tmp*

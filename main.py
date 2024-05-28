@@ -268,14 +268,15 @@ class Main:
         Returns:
             int: The last run ID found in the data file.
         """
-        with open(self.current_data_file, "a+") as f:
-            if (f_read := f.read()) != "":
-                data = json.load(f_read)
+        if not os.path.exists(self.current_data_file):
+            print(f"Creating a new data file: {self.current_data_file=}")
+            data = {}
+            last_id = 0
+        else:
+            with open(self.current_data_file, "r") as f:
+                data = json.load(f)
                 # note that the keys are in the format of "run_{id}"
-                last_id = max(map(lambda x: x.split("_")[1], data.keys()))
-            else:
-                data = {}
-                last_id = 0
+                last_id = int(max(map(lambda x: x.split("_")[1], data.keys())))
 
         if create_dict:
             with open(self.current_data_file, "w") as f:
@@ -289,16 +290,7 @@ class Main:
             self.netG.state_dict(),
             os.path.join(checkpoint_dir, (g_name := f"netG_{suffix}.pth")),
         )
-        torch.save(
-            self.netD.state_dict(),
-            os.path.join(checkpoint_dir, (d_name := f"netD_{suffix}.pth")),
-        )
-
-        if vars:
-            with open(
-                os.path.join(checkpoint_dir, (v_name := f"vars_{suffix}.pkl")), "wb"
-            ) as f:
-                pickle.dump(vars, f)
+        print(f"Saving {g_name}")
 
         g_files = self["g_files"]
         if g_files:
@@ -307,19 +299,31 @@ class Main:
             g_files = [g_name]
         self["g_files"] = g_files
 
+        torch.save(
+            self.netD.state_dict(),
+            os.path.join(checkpoint_dir, (d_name := f"netD_{suffix}.pth")),
+        )
+        print(f"Saving {d_name}")
+
         d_files = self["d_files"]
         if d_files:
             d_files.append(d_name)
         else:
             d_files = [d_name]
         self["d_files"] = d_files
+        if vars:
+            with open(
+                os.path.join(checkpoint_dir, (v_name := f"vars_{suffix}.pkl")), "wb"
+            ) as f:
+                pickle.dump(vars, f)
+            print(f"Saving {v_name}")
 
-        v_files = self["v_files"]
-        if v_files:
-            v_files.append(v_name)
-        else:
-            v_files = [v_name]
-        self["v_files"] = v_files
+            v_files = self["v_files"]
+            if v_files:
+                v_files.append(v_name)
+            else:
+                v_files = [v_name]
+            self["v_files"] = v_files
 
     def load_checkpoint(self, checkpoint_dir, epoch):
         raise NotImplementedError

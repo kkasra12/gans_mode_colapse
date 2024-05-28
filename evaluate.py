@@ -59,7 +59,7 @@ class Evaluate:
             if len(t) == 10:
                 img = np.concatenate(t, axis=1)
                 if prefix:
-                    plt.imsave(f"{prefix}_0.png", img)
+                    plt.imsave(f"{prefix}_{index}.png", img)
                     index += 1
                 else:
                     plt.imshow(img)
