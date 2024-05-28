@@ -1,3 +1,5 @@
+import copy
+from matplotlib.style import available
 from numpy import iterable
 import torch
 from torch import nn
@@ -83,18 +85,14 @@ class Generator(nn.Module):
                 nc: int = 1,
         """
         super(Generator, self).__init__()
-        if shared_layers != 0:
-            # TODO: Implement shared layers
-            raise NotImplementedError("Shared layers are not implemented yet")
         self.ngpu = ngpu
         self.number_of_generators = number_of_generators
         self.shared_layers = shared_layers
         self.nz = nz
         self.ngf = ngf
         self.nc = nc
-
-        self.models = [
-            nn.Sequential(
+        available_layers = [
+            [
                 # input is Z, going into a convolution
                 nn.ConvTranspose2d(
                     in_channels=nz,
@@ -106,25 +104,42 @@ class Generator(nn.Module):
                 ),
                 nn.BatchNorm2d(ngf * 8),
                 nn.ReLU(True),
-                # state size. ``(ngf*8) x 4 x 4``
+            ],
+            [  # state size. ``(ngf*8) x 4 x 4``
                 nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
                 nn.BatchNorm2d(ngf * 4),
                 nn.ReLU(True),
-                # state size. ``(ngf*4) x 8 x 8``
+            ],
+            [  # state size. ``(ngf*4) x 8 x 8``
                 nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
                 nn.BatchNorm2d(ngf * 2),
                 nn.ReLU(True),
-                # state size. ``(ngf*2) x 16 x 16``
+            ],
+            [  # state size. ``(ngf*2) x 16 x 16``
                 nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
                 nn.BatchNorm2d(ngf),
                 nn.ReLU(True),
-                # state size. ``(ngf) x 32 x 32``
+            ],
+            [  # state size. ``(ngf) x 32 x 32``
                 nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-                nn.Tanh(),
-                # state size. ``(nc) x 64 x 64``
-            )
-            for _ in range(number_of_generators)
+                nn.Tanh(),  # state size. ``(nc) x 64 x 64`]
+            ],
         ]
+        if shared_layers >= len(available_layers):
+            raise ValueError(
+                f"shared_layers should be less than {len(available_layers)} but got {shared_layers}"
+            )
+
+        tmp = []
+        for _ in range(shared_layers):
+            tmp.extend(available_layers.pop(0))
+        self.shared_layers = nn.Sequential(*tmp)
+
+        tmp = []
+        while available_layers:
+            tmp.extend(copy.deepcopy(available_layers.pop(0)))
+
+        self.models = [nn.Sequential(*tmp) for _ in range(number_of_generators)]
 
         for i, model in enumerate(self.models):
             self.add_module(f"model_{i}", model)
@@ -135,12 +150,16 @@ class Generator(nn.Module):
         :param labels: The labels tensor (they must be some integers)
         """
         if iterable(labels):
-            t = [
-                self.models[lbl.item()](inp.unsqueeze(0)).squeeze(0)
-                for lbl, inp in zip(labels, inputs, strict=True)
-            ]
+            # t = [
+            #     self.models[lbl.item()](inp.unsqueeze(0)).squeeze(0)
+            #     for lbl, inp in zip(labels, inputs, strict=True)
+            # ]
+            t = []
+            for lbl, inp in zip(labels, inputs, strict=True):
+                shared_layers_out = self.shared_layers(inp.unsqueeze(0))
+                t.append(self.models[lbl.item()](shared_layers_out).squeeze(0))
             return torch.stack(t)
-        return self.models[labels.item()](inputs)
+        return self.models[labels.item()](self.shared_layers(inputs))
 
     def generate(self, num_samples: int, labels: torch.Tensor = None):
         """
@@ -270,3 +289,30 @@ def create_models(
         print(netD)
 
     return netG, netD
+
+
+if __name__ == "__main__":
+    # this is just a test
+    netG, netD = create_models(
+        nc=1,
+        ngf=64,
+        ndf=64,
+        nlabels=(nlabels := 10),
+        nz=(nz := 100),
+        ngpu=0,
+        shared_layers=3,
+        device="cpu",
+        verbose=True,
+    )
+    print("netG", netG, "-----", sep="\n")
+    print("netD", netD, "-----", sep="\n")
+
+    print(
+        (
+            fake_imgs := netG(
+                torch.randn((batch_size := 3), nz, 1, 1),
+                torch.randint(0, nlabels, (batch_size,)),
+            )
+        )
+    )
+    print(netD(fake_imgs))

@@ -218,7 +218,7 @@ class Main:
                 except Exception as e:
                     print(f"Exception occured in batch {i}, {e}")
                     gc.collect()
-                    torch.cuda.empty_cache()
+                    # torch.cuda.empty_cache()
                 # Check how the generator is doing by saving G's output on fixed_noise
                 if i % step == 0:
                     with torch.no_grad():
