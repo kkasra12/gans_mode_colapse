@@ -4,7 +4,7 @@ import os
 import pickle
 from datetime import datetime
 
-import fire
+import typer
 import torch
 from torch import nn, optim
 from torchvision.transforms import v2 as transforms
@@ -19,16 +19,17 @@ class Main:
     def __init__(
         self,
         data_path: str = "./data",
-        batch_size: int = 12,
+        batch_size: int = 128,
         ngpu: int = 1,
         nz: int = 100,
         ngf: int = 64,
         nc: int = 1,
         ndf: int = 64,
-        lr: float = 0.002,
+        lr: float = 0.0002,
         transform: bool = True,
         beta1: float = 0.5,
         shared_layers: int = 0,
+        device: str = None,
         workers: int = 1,
     ):
         """
@@ -45,6 +46,7 @@ class Main:
             lr (float): The learning rate for the Adam optimizer. Default is 0.0002.
             transform (bool): Whether to apply data transformations. Default is True.
             beta1 (float): The beta1 parameter for the Adam optimizer. Default is 0.5.
+            device (str): The device to use for training. if None, it will be set to "cuda:0" if a GPU is available, otherwise "cpu". Default is None.
             workers (int): The number of worker threads for data loading. Default is 1.
         """
         # TODO: Add id as the argument to save the model with the id in the filename
@@ -63,11 +65,11 @@ class Main:
                 [
                     transforms.ToImage(),
                     transforms.ToDtype(torch.float32, scale=True),
-                    transforms.RandomRotation(degrees=15),
-                    transforms.RandomCrop(size=(20, 20)),
-                    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
-                    transforms.RandomPerspective(),
-                    transforms.RandomZoomOut(),
+                    # transforms.RandomRotation(degrees=15),
+                    # transforms.RandomCrop(size=(20, 20)),
+                    # transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+                    # transforms.RandomPerspective(),
+                    # transforms.RandomZoomOut(),
                     transforms.Resize(size=(64, 64)),
                     transforms.Normalize((0.5,), (0.5,)),
                 ]
@@ -78,9 +80,12 @@ class Main:
         self.dataset = MnistDataset(
             data_path, batch_size=batch_size, transform=transform
         )
-        self.device = torch.device(
-            "cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu"
-        )
+        if device is None:
+            self.device = torch.device(
+                "cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu"
+            )
+        else:
+            self.device = torch.device(device)
         # self.device = torch.device("cuda:0")
         self.nz = nz
         self.netG, self.netD = create_models(
@@ -113,36 +118,101 @@ class Main:
         checkpoint_dir: str | os.PathLike = "./checkpoints",
         generate_images_per_epoch: int = 10,
         run_id: int = -1,
+        continue_training: bool = False,
     ):
+        """
+        Trains the GAN model for a specified number of epochs.
+
+        Args:
+            num_epochs (int): The number of epochs to train the model (default: 5).
+            checkpoint_dir (str | os.PathLike): The directory to save checkpoints (default: "./checkpoints").
+            generate_images_per_epoch (int): The number of images to generate per epoch (default: 10).
+            run_id (int): The ID of the current run (default: -1).
+            continue_training (bool): Whether to continue training from the "run_id" (default: False).
+
+        Raises:
+            ValueError: If the specified run_id is greater than the last run ID found in the checkpoint directory.
+
+        Returns:
+            None
+        """
         if checkpoint_dir:
             os.makedirs(checkpoint_dir, exist_ok=True)
         self.checkpoint_dir = checkpoint_dir
         self.current_data_file = os.path.join(checkpoint_dir, f"{self.data_file}.json")
-
-        last_run_id = self.find_last_run_id()
-        if run_id == -1:
-            self.run_id = last_run_id + 1
-        elif run_id <= last_run_id:
-            self.run_id = run_id
-        else:
-            raise ValueError(
-                f"run_id should be less than or equal to {last_run_id}, got {run_id},"
-                f"for more info, please check the {os.path.join(checkpoint_dir, f'{self.data_file}.json')} file."
+        if continue_training and not os.path.exists(self.current_data_file):
+            raise FileNotFoundError(
+                f"Can't find the data file ({self.current_data_file})"
             )
 
-        self["num_epochs"] = num_epochs
-        self["ngpu"] = self.ngpu
-        self["nlabels"] = len(self.dataset.all_classes)
-        self["generate_images_per_epoch"] = generate_images_per_epoch
-        self["batch_size"] = self.batch_size
-        self["shared_layers"] = self.shared_layers
-        self["nz"] = self.nz
-        self["ngf"] = self.netG.ngf
-        self["nc"] = self.netG.nc
-        self["ndf"] = self.netD.ndf
-        self["lr"] = self.optimizerD.param_groups[0]["lr"]
-        self["beta1"] = self.optimizerD.param_groups[0]["betas"][0]
-        self["device"] = self.device.type
+        if not continue_training:
+            last_run_id = self.find_last_run_id()
+            if run_id == -1:
+                self.run_id = last_run_id + 1
+            elif run_id <= last_run_id:
+                self.run_id = run_id
+            else:
+                raise ValueError(
+                    f"run_id should be less than or equal to {last_run_id}, got {run_id},"
+                    f"for more info, please check the {os.path.join(checkpoint_dir, f'{self.data_file}.json')} file."
+                )
+
+            self["num_epochs"] = num_epochs
+            self["ngpu"] = self.ngpu
+            self["nlabels"] = len(self.dataset.all_classes)
+            self["generate_images_per_epoch"] = generate_images_per_epoch
+            self["batch_size"] = self.batch_size
+            self["shared_layers"] = self.shared_layers
+            self["nz"] = self.nz
+            self["ngf"] = self.netG.ngf
+            self["nc"] = self.netG.nc
+            self["ndf"] = self.netD.ndf
+            self["lr"] = self.optimizerD.param_groups[0]["lr"]
+            self["beta1"] = self.optimizerD.param_groups[0]["betas"][0]
+            self["device"] = self.device.type
+        else:
+            data_json = self.load_run_json(run_id)
+            self.run_id = run_id
+            assert (
+                (currenct_epoch := len(data_json["v_files"]))
+                == len(data_json["g_files"])
+                == len(data_json["d_files"])
+            ), "The number of files should be the same."
+            num_epochs = data_json.get("num_epochs") - currenct_epoch
+            if num_epochs == 0:
+                raise ValueError(
+                    f"Training for {run_id} has finished with {data_json.get('num_epochs')} epochs."
+                )
+
+            # check if all hyperparameters are the same
+            assert data_json.get("ngpu") == self.ngpu
+            assert data_json.get("nlabels") == len(self.dataset.all_classes)
+            assert (
+                data_json.get("generate_images_per_epoch") == generate_images_per_epoch
+            )
+            assert data_json.get("batch_size") == self.batch_size
+            assert data_json.get("shared_layers") == self.shared_layers
+            assert data_json.get("nz") == self.nz
+            assert data_json.get("ngf") == self.netG.ngf
+            assert data_json.get("nc") == self.netG.nc
+            assert data_json.get("ndf") == self.netD.ndf
+            assert data_json.get("lr") == self.optimizerD.param_groups[0]["lr"]
+            assert data_json.get("beta1") == self.optimizerD.param_groups[0]["betas"][0]
+            assert data_json.get("device") == self.device.type
+
+            # load the model
+            self.netG.load_state_dict(
+                torch.load(os.path.join(checkpoint_dir, data_json["g_files"][-1]))
+            )
+            self.netD.load_state_dict(
+                torch.load(os.path.join(checkpoint_dir, data_json["d_files"][-1]))
+            )
+            self.optimizerG.load_state_dict(
+                torch.load(os.path.join(checkpoint_dir, data_json["g_files"][-1]))
+            )
+            self.optimizerD.load_state_dict(
+                torch.load(os.path.join(checkpoint_dir, data_json["d_files"][-1]))
+            )
 
         real_label = 1.0
         fake_label = 0.0
@@ -183,8 +253,12 @@ class Main:
                     # can be used for further analysis (if needed)
 
                     ## Train with all-fake batch
-                    noise = torch.randn(b_size, self.nz, 1, 1, device=self.device)
-                    fake = self.netG(noise, lbl)
+                    # noise = torch.randn(b_size, self.nz, 1, 1, device=self.device)
+
+                    # TODO: use netG.make_sample_input
+                    fake = self.netG(
+                        self.netG.make_sample_input(b_size, device=self.device), lbl
+                    )
 
                     label.fill_(fake_label)
                     # Classify all fake batch with Discriminator
@@ -261,6 +335,7 @@ class Main:
     def find_last_run_id(self, create_dict: bool = True):
         """
         Finds the last run ID from the data file and optionally creates a new dictionary entry.
+        If no data file(self.current_data_file) exists, it will return 0.
 
         Args:
             create_dict (bool, optional): Whether to create a new dictionary entry. Defaults to True.
@@ -282,7 +357,7 @@ class Main:
             with open(self.current_data_file, "w") as f:
                 data[f"run_{last_id + 1}"] = {}
                 json.dump(data, f)
-            return last_id
+        return last_id
 
     def save_checkpoint(self, epoch, checkpoint_dir, vars: dict = None):
         suffix = f"{epoch}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -328,8 +403,11 @@ class Main:
     def load_checkpoint(self, checkpoint_dir, epoch):
         raise NotImplementedError
 
+    def load_run_json(self, run_id):
+        data_file = os.path.join(self.checkpoint_dir, f"{self.data_file}.json")
+        with open(data_file, "r") as f:
+            return json.load(f)[f"run_{run_id}"]
+
 
 if __name__ == "__main__":
-    fire.Fire(Main)
-    # for instance run with very default parameters:
-    # python main.py train
+    Main(lr=0.0001).train(num_epochs=15)

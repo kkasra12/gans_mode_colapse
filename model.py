@@ -1,4 +1,6 @@
+from cProfile import label
 import copy
+import warnings
 from matplotlib.style import available
 from numpy import iterable
 import torch
@@ -104,25 +106,31 @@ class Generator(nn.Module):
                 ),
                 nn.BatchNorm2d(ngf * 8),
                 nn.ReLU(True),
+                nn.Dropout(0.2),
             ],
             [  # state size. ``(ngf*8) x 4 x 4``
                 nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
                 nn.BatchNorm2d(ngf * 4),
                 nn.ReLU(True),
+                nn.Dropout(0.2),
             ],
             [  # state size. ``(ngf*4) x 8 x 8``
                 nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
                 nn.BatchNorm2d(ngf * 2),
                 nn.ReLU(True),
+                nn.Dropout(0.3),
             ],
             [  # state size. ``(ngf*2) x 16 x 16``
                 nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
                 nn.BatchNorm2d(ngf),
                 nn.ReLU(True),
+                nn.Dropout(0.4),
             ],
             [  # state size. ``(ngf) x 32 x 32``
                 nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-                nn.Tanh(),  # state size. ``(nc) x 64 x 64`]
+                nn.Tanh(),
+                # # state size. ``(nc) x 64 x 64`]
+                # nn.ReLU(),
             ],
         ]
         if shared_layers >= len(available_layers):
@@ -136,13 +144,17 @@ class Generator(nn.Module):
         self.shared_layers = nn.Sequential(*tmp)
 
         tmp = []
+        # we need to flatten the available_layers list
         while available_layers:
-            tmp.extend(copy.deepcopy(available_layers.pop(0)))
+            tmp.extend(available_layers.pop(0))
 
-        self.models = [nn.Sequential(*tmp) for _ in range(number_of_generators)]
+        self.models = [
+            copy.deepcopy(nn.Sequential(*tmp)) for _ in range(number_of_generators)
+        ]
 
         for i, model in enumerate(self.models):
             self.add_module(f"model_{i}", model)
+            # print(f"model_{i}", model, "-----", sep="\n")
 
     def forward(self, inputs, labels: torch.Tensor):
         """
@@ -154,8 +166,16 @@ class Generator(nn.Module):
             #     self.models[lbl.item()](inp.unsqueeze(0)).squeeze(0)
             #     for lbl, inp in zip(labels, inputs, strict=True)
             # ]
+            # raise NotImplementedError(
+            #     "labels should be a tensor, iters are not supported yet"
+            # )
             t = []
-            for lbl, inp in zip(labels, inputs, strict=True):
+            if len(labels) != len(inputs):
+                warnings.warn(
+                    f"The length of labels and inputs are not equal, {len(labels)=} != {len(inputs)=}",
+                    stacklevel=3,
+                )
+            for lbl, inp in zip(labels, inputs):
                 shared_layers_out = self.shared_layers(inp.unsqueeze(0))
                 t.append(self.models[lbl.item()](shared_layers_out).squeeze(0))
             return torch.stack(t)
@@ -176,6 +196,22 @@ class Generator(nn.Module):
             labels = torch.randint(0, self.number_of_generators, (num_samples,))
         imgs = [self(torch.randn(1, self.nz), lbl) for lbl in labels]
         return torch.stack(imgs)
+
+    def make_sample_input(self, num_samples: int, device: torch.device | str = None):
+        """
+        Make a sample input for the generator.
+        for instance you can say:
+        ```
+        labels = ...
+        assert len(labels) == 5 # for instance
+        gen = Generator(...)
+        gen(gen.make_sample_input(5), labels)
+        ```
+        it will generate 5 random images.
+        """
+        if device:
+            return torch.randn(num_samples, self.nz, 1, 1, device=device)
+        return torch.randn(num_samples, self.nz, 1, 1)
 
 
 class Discriminator(nn.Module):

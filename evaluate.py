@@ -22,7 +22,7 @@ class Evaluate:
         self.checkpoint_dir = checkpoint_dir
         print("init")
 
-    def show_imgs(self, run_id: int = None, prefix: str = None):
+    def show_imgs(self, run_id, prefix: str = None):
         """
         Display the generated images from the saved checkpoint.
 
@@ -158,6 +158,70 @@ class Evaluate:
 
     def __uniform_normalize(self, x: torch.Tensor):
         return (x - (m := x.min())) / (x.max() - m)
+
+    def show_sample(
+        self, run_id: int = -1, count: int = 5, save: bool = False, prefix: str = None
+    ):
+        """
+        Do forward pass on the generator model and display the generated images.
+
+        Args:
+        run_id (int, optional): The ID of the model to load and generate images from. if -1, it will load the last model. Defaults to -1.
+        count (int, optional): Number of images to generate. so the output will be number_of_subgenerators X count images. Defaults to 5.
+        save (bool, optional): If True, it will save the images. Defaults to False.
+        prefix (str, optional): The prefix of the saved image files. This will be ignored if save is False. Defaults to None.
+
+        Raises:
+        ValueError: If the run_id is not found in the data file.
+
+        Returns:
+        The generated images. it will be a matrix of images of shape (number_of_subgenerators, count)
+        """
+        print(f"Loading the data file {DATAFILE}.json...")
+        with open(os.path.join(self.checkpoint_dir, f"{DATAFILE}.json")) as f:
+            all_data = json.load(f)
+        if run_id == -1:
+            run_id = max(all_data.keys(), key=lambda x: int(x.split("_")[1]))
+        run_data = all_data.get(run_id)
+        if run_data is None:
+            raise ValueError(f"The {run_id=} is not found in the data file.")
+        last_g_name = run_data["g_files"][-1]
+        netG, _ = create_models(
+            ngpu=run_data["ngpu"],
+            nlabels=(n_labels := run_data["nlabels"]),
+            device=(device := run_data["device"]),
+            nz=(nz := run_data["nz"]),
+            nc=run_data["nc"],
+            ngf=run_data["ngf"],
+            ndf=run_data["ndf"],
+            shared_layers=run_data["shared_layers"],
+        )
+        netG.load_state_dict(torch.load(os.path.join(self.checkpoint_dir, last_g_name)))
+        netG.eval()
+        assert len(netG.models) == n_labels
+        print(f"A generator model with {n_labels} sub-generators is loaded.")
+        imgs = []
+
+        for i in range(n_labels):
+            img = (
+                netG(netG.make_sample_input(count, device=device), torch.tensor(i))
+                .detach()
+                .cpu()
+                .numpy()
+            )
+            imgs.append(np.concatenate(np.rollaxis(img, 1, 4), axis=1))
+        print([img.shape for img in imgs])
+        imgs = np.concatenate(imgs, axis=0)
+        if save:
+            plt.imsave(f"{prefix}_{run_id}_generated.png", imgs)
+        else:
+            if imgs.shape[-1] == 1:
+                plt.imshow(imgs, cmap="gray")
+            else:
+                plt.imshow(imgs)
+            plt.axis("off")
+            plt.show()
+        return imgs
 
 
 if __name__ == "__main__":

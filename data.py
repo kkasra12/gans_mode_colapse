@@ -123,6 +123,7 @@ class MnistDataset(IterableDataset):
         ), f"Bad shape: {labels.shape}, expected {images.shape[0]}"
         assert labels.dtype == np.uint8, f"Bad dtype: {labels.dtype}, expected np.uint8"
 
+        # labels = np.zeros_like(labels)
         return images, labels
 
     def __iter__(self):
