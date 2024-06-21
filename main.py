@@ -61,15 +61,14 @@ class Main:
 
         if transform:
             # TODO: Try to use transforms.RandomApply
-            transform = transforms.Compose(
+            transform_funcs = transforms.Compose(
                 [
                     transforms.ToImage(),
                     transforms.ToDtype(torch.float32, scale=True),
-                    # transforms.RandomRotation(degrees=15),
-                    # transforms.RandomCrop(size=(20, 20)),
-                    # transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
-                    # transforms.RandomPerspective(),
-                    # transforms.RandomZoomOut(),
+                    transforms.RandomRotation(degrees=(-20, 20)),
+                    transforms.Resize(size=(64, 64)),
+                    transforms.RandomCrop(size=(50, 50)),
+                    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
                     transforms.Resize(size=(64, 64)),
                     transforms.Normalize((0.5,), (0.5,)),
                 ]
@@ -78,7 +77,7 @@ class Main:
         self.data_path = data_path
         self.batch_size = batch_size
         self.dataset = MnistDataset(
-            data_path, batch_size=batch_size, transform=transform
+            data_path, batch_size=batch_size, transform=transform_funcs
         )
         if device is None:
             self.device = torch.device(
@@ -149,6 +148,7 @@ class Main:
             last_run_id = self.find_last_run_id()
             if run_id == -1:
                 self.run_id = last_run_id + 1
+                # if run_id is -1, then we should generate a new id
             elif run_id <= last_run_id:
                 self.run_id = run_id
             else:
@@ -170,8 +170,14 @@ class Main:
             self["lr"] = self.optimizerD.param_groups[0]["lr"]
             self["beta1"] = self.optimizerD.param_groups[0]["betas"][0]
             self["device"] = self.device.type
+            print(f"Starting training for run_id {self.run_id}...")
         else:
+            # if we want to continue training, we should load the last model and optimizer states
+            if run_id == -1:
+                run_id = self.find_last_run_id(create_dict=False)
             data_json = self.load_run_json(run_id)
+            if data_json is None:
+                raise ValueError(f"Can't find the run_id {run_id} in the data file.")
             self.run_id = run_id
             assert (
                 (currenct_epoch := len(data_json["v_files"]))
@@ -218,9 +224,11 @@ class Main:
         fake_label = 0.0
 
         # after each `step` batches, generate some images using `fixed_noise` and save them in the `imgs` list
-        fixed_noise = torch.randn(
-            generate_images_per_epoch, self.nz, 1, 1, device=self.device
-        )
+        # fixed_noise = torch.randn(
+        #     generate_images_per_epoch, self.nz, 1, 1, device=self.device
+        # )
+        fixed_noise = self.netG.make_sample_input(self.batch_size, device=self.device)
+
         step = len(self.dataset) // generate_images_per_epoch
         all_labels = torch.tensor(sorted(self.dataset.all_classes), device=self.device)
 
@@ -229,6 +237,7 @@ class Main:
         d_losses = []
 
         for epoch in range(num_epochs):
+            retry = 5
             # For each batch in the dataloader
             for i, (data, lbl) in enumerate(tqdm(self.dataset)):
                 try:
@@ -292,6 +301,8 @@ class Main:
                 except Exception as e:
                     print(f"Exception occured in batch {i}, {e}")
                     gc.collect()
+                    if (retry := retry - 1) == 0:
+                        raise e
                     # torch.cuda.empty_cache()
                 # Check how the generator is doing by saving G's output on fixed_noise
                 if i % step == 0:
@@ -351,7 +362,7 @@ class Main:
             with open(self.current_data_file, "r") as f:
                 data = json.load(f)
                 # note that the keys are in the format of "run_{id}"
-                last_id = int(max(map(lambda x: x.split("_")[1], data.keys())))
+                last_id = int(max(map(lambda x: int(x.split("_")[1]), data.keys())))
 
         if create_dict:
             with open(self.current_data_file, "w") as f:
@@ -410,4 +421,4 @@ class Main:
 
 
 if __name__ == "__main__":
-    Main(lr=0.0001).train(num_epochs=15)
+    Main(lr=0.0001).train(num_epochs=10)
