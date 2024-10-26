@@ -5,3 +5,7 @@ checkpoints/
 *.ipynb
 _*
 tmp*
+.my*
+hpc_checkpoints*/
+imgs/
+report.md

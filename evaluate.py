@@ -1,10 +1,8 @@
-import glob
 import json
-from operator import is_
 import os
 import pickle
 
-import fire
+# import fire
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
@@ -58,6 +56,7 @@ class Evaluate:
         for epoch, img in enumerate(
             imgs.reshape(imgs.shape[0], -1, imgs.shape[-1]), start=1
         ):
+            break
             t.append(img)
             if len(t) == 10:
                 img = np.concatenate(t, axis=1)
@@ -75,9 +74,12 @@ class Evaluate:
                 t = []
 
         # also, lets plot the losses
-        plt.plot(saved_vars["g_losses"][:50], label="Generator Loss")
-        plt.plot(saved_vars["d_losses"][:50], label="Discriminator Loss")
+        print(len(saved_vars["g_losses"]), len(saved_vars["d_losses"]))
+        plt.plot(saved_vars["g_losses"][:15], label="Generator Loss")
+        plt.plot(saved_vars["d_losses"][:15], label="Discriminator Loss")
         plt.xlabel("Epoch")
+        # change the xticks to be from 0 to 15
+        # plt.xticks(np.arange(16))
         plt.ylabel("Loss")
         plt.legend()
         if prefix:
@@ -182,9 +184,13 @@ class Evaluate:
             all_data = json.load(f)
         if run_id == -1:
             run_id = max(all_data.keys(), key=lambda x: int(x.split("_")[1]))
+        if isinstance(run_id, int):
+            run_id = f"run_{run_id}"
         run_data = all_data.get(run_id)
         if run_data is None:
-            raise ValueError(f"The {run_id=} is not found in the data file.")
+            raise ValueError(
+                f"The {run_id=} is not found in the data file, available runs are: {all_data.keys()}"
+            )
         last_g_name = run_data["g_files"][-1]
         netG, _ = create_models(
             ngpu=run_data["ngpu"],
@@ -225,6 +231,10 @@ class Evaluate:
 
 
 if __name__ == "__main__":
-    fire.Fire(Evaluate)
+    # fire.Fire(Evaluate)
     # a = Evaluate().fid(1, num_epochs=10)
     # print(a)
+    print("hello")
+    a = Evaluate("hpc_checkpoints_")
+    print(a)
+    a.show_sample(run_id=2, count=5, save=False)
