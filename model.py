@@ -148,7 +148,7 @@ class Generator(nn.Module):
         while available_layers:
             tmp.extend(available_layers.pop(0))
 
-        self.models = [
+        self.models: list[nn.Sequential] = [
             copy.deepcopy(nn.Sequential(*tmp)) for _ in range(number_of_generators)
         ]
 
@@ -212,6 +212,24 @@ class Generator(nn.Module):
         if device:
             return torch.randn(num_samples, self.nz, 1, 1, device=device)
         return torch.randn(num_samples, self.nz, 1, 1)
+
+    def make_sample_labels(self, num_samples: int, device: torch.device | str = None):
+        """
+        Make a sample labels for the generator.
+        for instance you can say:
+        ```
+        labels = netG.make_sample_labels(5)
+        assert len(labels) == 5
+        gen = Generator(...)
+        gen(gen.make_sample_input(5), labels)
+        ```
+        it will generate 5 random images.
+        """
+        if device:
+            return torch.randint(
+                0, self.number_of_generators, (num_samples,), device=device
+            )
+        return torch.randint(0, self.number_of_generators, (num_samples,))
 
 
 class Discriminator(nn.Module):

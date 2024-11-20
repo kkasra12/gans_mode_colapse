@@ -5,6 +5,7 @@
 #SBATCH -c 7
 #SBATCH -G 1
 #SBATCH --time=04:00:00
+#SBATCH --mem=32G
 #SBATCH -p gpu
 
 print_error_and_exit() {
@@ -19,7 +20,7 @@ export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK # Propagate Slurm 'cpus-per-task'
 echo "Running on $(hostname)"
 conda activate llama_env
 echo "Running main.py"
-srun --unbuffered python main.py train --epochs 30
+srun --unbuffered python -m fire main.py Main train --num_epochs 40
 echo "Done"
 # to run this file we can use the following command
 # sbatch train_model.sh

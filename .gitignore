@@ -4,8 +4,11 @@ checkpoints/
 *data*/
 *.ipynb
 _*
+!__init__.py
 tmp*
 .my*
 hpc_checkpoints*/
 imgs/
 report.md
+wandb
+train.py

@@ -3,22 +3,62 @@ import os
 import pickle
 
 # import fire
+from tqdm import trange
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
+from torchmetrics.image.inception import InceptionScore
+from torchmetrics.image.fid import FrechetInceptionDistance
+from torch.nn.functional import interpolate as torch_interpolate
 
-from torcheval.metrics import FrechetInceptionDistance
-from tqdm import trange
 from data import MnistDataset
-from model import create_models
+from model import Generator, create_models
+from logger import Logger
 
+# TODO: This variable should not be hardcoded.
 DATAFILE = "data"
 
 
 class Evaluate:
-    def __init__(self, checkpoint_dir: os.PathLike | str = "./checkpoints"):
-        self.checkpoint_dir = checkpoint_dir
-        print("init")
+    @staticmethod
+    def __initiate_dataset(batch_size: int):
+        return MnistDataset(DATAFILE, batch_size=batch_size)
+
+    @staticmethod
+    def load_generator(logger: Logger):
+        """
+        Load the generator model from the logger.
+
+        Args:
+            logger (Logger): The logger object to load the generator model from.
+
+        Returns:
+            The generator model.
+        """
+        ngpu = logger["ngpu"]
+        nlabels = logger["nlabels"]
+        device = logger["device"]
+        nz = logger["nz"]
+        nc = logger["nc"]
+        ngf = logger["ngf"]
+        ndf = logger["ndf"]
+        shared_layers = logger["shared_layers"]
+
+        netG, _ = create_models(
+            ngpu=ngpu,
+            nlabels=nlabels,
+            device=device,
+            nz=nz,
+            nc=nc,
+            ngf=ngf,
+            ndf=ndf,
+            shared_layers=shared_layers,
+        )
+        netG.load_state_dict(
+            torch.load(logger.get_files("g_files")[-1].file_path, weights_only=True)
+        )
+        netG.eval()
+        return netG, device
 
     def show_imgs(self, run_id, prefix: str = None):
         """
@@ -34,6 +74,7 @@ class Evaluate:
         Returns:
             None
         """
+        raise RuntimeError("This function is not implemented yet.")
         print(f"Loading the data file {DATAFILE}.json...")
         with open(os.path.join(self.checkpoint_dir, f"{DATAFILE}.json")) as f:
             run_data = json.load(f).get(f"run_{run_id}")
@@ -87,53 +128,75 @@ class Evaluate:
         else:
             plt.show()
 
-    def fid(self, run_id: int, num_epochs: int = 100, batch_size: int = 10):
+    @classmethod
+    def fid(
+        cls,
+        num_epochs: int = 100,
+        batch_size: int = 10,
+        *,
+        device: torch.device | str = None,
+        logger: Logger = None,
+        netG: Generator = None,
+    ) -> float:
         """
         Calculate the FID score for the generated images.
 
         Args:
-            run_id (int): The ID of the model to load and calculate the FID score.
             num_epochs (int, optional): The number of epochs to generate the images. Defaults to 100.
-            batch_size (int, optional): The batch size to use for the FID calculation. (Therefor, final number of used image will be num_epochs * batch_size)s. Defaults to 10.
-
+            batch_size (int, optional): The batch size to use for the FID calculation.
+                                        (Therefor, final number of used image will be num_epochs * batch_size)s. Defaults to 10.
+            device (torch.device|str, optional): The device to use for the calculation.
+                                                  if you are using the logger (netG==None),
+                                                  it will be loaded from the logger and this will be ignored. if None, it will use GPU if available. Defaults to None.
+            logger (Logger, optional): The logger object to load the generator model from. if None, you should provide the netG.
+            netG (Generator, optional): The generator model to use for the calculation. if None, you should provide the logger.
 
         Returns:
-            None
+            float: The FID score.
         """
-        print(f"Loading the data file {DATAFILE}.json...")
-        with open(os.path.join(self.checkpoint_dir, f"{DATAFILE}.json")) as f:
-            run_data = json.load(f).get(f"run_{run_id}")
-            if run_data is None:
-                raise ValueError("The run_id is not found in the data file.")
-            if "fid" in run_data:
-                print(f"The FID score for run_{run_id} is: {run_data['fid']}")
-                return run_data["fid"]
-        print(f"Calculating the FID score for run_{run_id}...")
-        # now we need to calculate the FID score
-        # we will use the last epoch model
-        last_epoch_g = max(run_data["g_files"], key=lambda x: int(x.split("_")[1]))
-        netG, _ = create_models(
-            ngpu=run_data["ngpu"],
-            nlabels=(n_labels := run_data["nlabels"]),
-            device=(device := run_data["device"]),
-            nz=(nz := run_data["nz"]),
-            nc=run_data["nc"],
-            ngf=run_data["ngf"],
-            ndf=run_data["ndf"],
-            shared_layers=run_data["shared_layers"],
-        )
-        netG.load_state_dict(
-            torch.load(os.path.join(self.checkpoint_dir, last_epoch_g))
-        )
-        netG.eval()
-        dataset_iter = iter(MnistDataset(DATAFILE, batch_size=batch_size))
-        fid_model = FrechetInceptionDistance()
 
-        for _ in trange(num_epochs):
+        if (logger is None and netG is None) or (
+            logger is not None and netG is not None
+        ):
+            raise ValueError(
+                "Either logger or netG should be provided, not both or none."
+            )
+
+        if netG is None:
+            netG, device = cls.load_generator(logger)
+
+        # ngpu = logger["ngpu"]
+        # nlabels = logger["nlabels"]
+        # device = logger["device"]
+        # nz = logger["nz"]
+        # nc = logger["nc"]
+        # ngf = logger["ngf"]
+        # ndf = logger["ndf"]
+        # shared_layers = logger["shared_layers"]
+        # n_labels = logger["nlabels"]
+
+        # netG, _ = create_models(
+        #     ngpu=ngpu,
+        #     nlabels=nlabels,
+        #     device=device,
+        #     nz=nz,
+        #     nc=nc,
+        #     ngf=ngf,
+        #     ndf=ndf,
+        #     shared_layers=shared_layers,
+        # )
+        # netG.load_state_dict(
+        #     torch.load(logger.get_files("g_files")[-1].file_path, weights_only=True)
+        # )
+        # netG.eval()
+        dataset_iter = iter(cls.__initiate_dataset(batch_size))
+        fid_model = FrechetInceptionDistance().to(device)
+
+        for _ in trange(num_epochs, desc="calculating FID"):
             fake = (
                 netG(
-                    torch.randn(batch_size, nz, 1, 1, device=device),
-                    torch.randint(0, n_labels, (batch_size,)),
+                    netG.make_sample_input(batch_size, device=device),
+                    netG.make_sample_labels(batch_size, device=device),
                 )
                 .detach()
                 .repeat_interleave(3, 1)
@@ -143,23 +206,116 @@ class Evaluate:
             # because the FID model(to be more specific, the inception model) expects the input to be of shape (batch_size, 3, h, w) (3 channels imgs)
             # also, we should map the images between [0, 1] interval
             fid_model.update(
-                self.__uniform_normalize(fake),
-                is_real=False,
+                cls.__uniform_normalize(fake).type(torch.uint8),
+                real=False,
             )
             # collect real images
             imgs, _ = next(dataset_iter)
+            real_update = (
+                cls.__uniform_normalize(imgs.permute(0, 3, 1, 2))
+                .repeat_interleave(3, 1)
+                .type(torch.uint8)
+                .to(device)
+            )
+            # NOTE: to save some memory, we didnt transfered the whole dataset to the device, we just transferred the current batch.
+            assert (
+                real_update.shape == (batch_size, 3, 299, 299)
+            ), f"{real_update.shape=}, it should be {(batch_size, 3, 299, 299)}, {imgs.shape=}"
+
             fid_model.update(
-                self.__uniform_normalize(imgs)
-                .permute(0, 3, 1, 2)
-                .repeat_interleave(3, 1),
-                is_real=True,
+                real_update,
+                real=True,
             )
         with torch.no_grad():
             fid_score = fid_model.compute()
         return fid_score.item()
 
-    def __uniform_normalize(self, x: torch.Tensor):
-        return (x - (m := x.min())) / (x.max() - m)
+    @staticmethod
+    def __uniform_normalize(x: torch.Tensor, min_val=0, max_val=255):
+        x = x.clone().float()
+        xmin = x.min()
+        xmax = x.max()
+        new_x = min_val + (x - xmin) * (max_val - min_val) / (xmax - xmin)
+        assert (
+            torch.isclose(new_x.min(), torch.tensor(min_val, dtype=torch.float32))
+            and torch.isclose(new_x.max(), torch.tensor(max_val, dtype=torch.float32))
+        ), f"new min value should be {min_val} not {new_x.min()=}, new max value should be {max_val} not {new_x.max()=}"
+        return torch_interpolate(new_x, size=299, mode="bilinear")
+
+    @classmethod
+    def inception_score(
+        cls,
+        num_epochs: int = 100,
+        batch_size: int = 10,
+        *,
+        device: torch.device | str = None,
+        logger: Logger = None,
+        netG: Generator = None,
+    ) -> tuple[float, float]:
+        """
+        Calculate the Inception score for the generated images.
+
+        Args:
+            num_epochs (int, optional): The number of epochs to generate the images. Defaults to 100.
+            batch_size (int, optional): The batch size to use for the FID calculation.
+                                        (Therefor, final number of used image will be num_epochs * batch_size)s. Defaults to 10.
+            device (torch.device|str, optional): The device to use for the calculation.
+                                                  if you are using the logger (netG==None),
+                                                  it will be loaded from the logger and this will be ignored. if None, it will use GPU if available. Defaults to None.
+            logger (Logger, optional): The logger object to load the generator model from. if None, you should provide the netG.
+            netG (Generator, optional): The generator model to use for the calculation. if None, you should provide the logger.
+
+        Returns:
+            float: The Inception score.
+        """
+        if (logger is None and netG is None) or (
+            logger is not None and netG is not None
+        ):
+            raise ValueError(
+                "Either logger or netG should be provided, not both or none."
+            )
+
+        if netG is None:
+            netG, device = cls.load_generator(logger)
+
+        inception_score = InceptionScore().to(device)
+
+        for _ in trange(num_epochs, desc="Calculating the Inception Score"):
+            fake = (
+                netG(
+                    netG.make_sample_input(batch_size, device=device),
+                    netG.make_sample_labels(batch_size, device=device),
+                )
+                .detach()
+                .repeat_interleave(3, 1)
+            )
+            assert fake.ndim == 4 and fake.shape[:2] == (
+                batch_size,
+                3,
+            ), f"{fake.shape=}, it should be ({batch_size}, 3, h, w)"
+
+            new_update = (
+                cls.__uniform_normalize(fake, min_val=0, max_val=255)
+                .type(torch.uint8)
+                .to(device)
+            )
+            assert (
+                new_update.min() >= 0 and new_update.max() <= 255
+            ), f"{new_update.min()=} {new_update.max()=}"
+            assert new_update.shape == (
+                batch_size,
+                3,
+                299,
+                299,
+            ), f"{new_update.shape=}, it should be {(batch_size, 3, 299, 299)}"
+            assert (
+                new_update.dtype == torch.uint8
+            ), f"{new_update.dtype=}, it should be torch.uint8"
+            inception_score.update(new_update)
+            # There is no need to collect real images for the inception score calculation.
+
+        with torch.no_grad():
+            return inception_score.compute()
 
     def show_sample(
         self, run_id: int = -1, count: int = 5, save: bool = False, prefix: str = None
@@ -179,6 +335,7 @@ class Evaluate:
         Returns:
         The generated images. it will be a matrix of images of shape (number_of_subgenerators, count)
         """
+        raise RuntimeError("This function is not implemented yet.")
         print(f"Loading the data file {DATAFILE}.json...")
         with open(os.path.join(self.checkpoint_dir, f"{DATAFILE}.json")) as f:
             all_data = json.load(f)
@@ -234,7 +391,15 @@ if __name__ == "__main__":
     # fire.Fire(Evaluate)
     # a = Evaluate().fid(1, num_epochs=10)
     # print(a)
-    print("hello")
-    a = Evaluate("hpc_checkpoints_")
-    print(a)
-    a.show_sample(run_id=2, count=5, save=False)
+    a = Evaluate()
+    print(
+        a.inception_score(
+            logger=Logger("checkpoints", run_id="y8xer2yz", resume=True), num_epochs=10
+        )
+    )
+
+    print(
+        a.fid(
+            logger=Logger("checkpoints", run_id="y8xer2yz", resume=True), num_epochs=10
+        )
+    )
