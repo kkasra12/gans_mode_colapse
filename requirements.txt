@@ -1,5 +1,6 @@
 fire==0.7.0
 wandb==0.18.7
+matplotlib==3.9.2
 sympy==1.13.1
 tqdm==4.66.5
 torch==2.5.1
