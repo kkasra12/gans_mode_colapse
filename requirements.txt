@@ -5,3 +5,4 @@ torch==2.2.1
 torchvision==0.17.1
 tqdm==4.66.2
 torchmetrics==1.6.0
+wandb
