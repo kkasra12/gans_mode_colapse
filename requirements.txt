@@ -1,8 +1,7 @@
 fire==0.6.0
-matplotlib==3.8.3
-numpy==1.26.4
-torch==2.2.1
-torchvision==0.17.1
-tqdm==4.66.2
-torchmetrics==1.6.0
-wandb
+wandb==0.18.7
+sympy==1.13.3
+tqdm==4.66.4
+torch==2.5.0
+torchvision==0.20.1
+torchmetrics[image]==1.6.0
