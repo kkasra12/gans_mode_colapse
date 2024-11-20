@@ -18,7 +18,7 @@ module purge || print_error_and_exit "No 'modulcae' command"
 export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK # Propagate Slurm 'cpus-per-task' to srun
 # module load lang/python3
 echo "Running on $(hostname)"
-conda activate llama_env
+conda activate mode_colapse
 echo "Running main.py"
 srun --unbuffered python -m fire main.py Main train --num_epochs 40
 echo "Done"
