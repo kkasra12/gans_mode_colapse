@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH -c 7
 #SBATCH -G 1
-#SBATCH --time=04:00:00
+#SBATCH --time=20:00:00
 #SBATCH --mem=32G
 #SBATCH -p gpu
 
