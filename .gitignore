@@ -12,3 +12,6 @@ imgs/
 report.md
 wandb
 train.py
+
+slurm*.out
+# for slurm files created on srver
