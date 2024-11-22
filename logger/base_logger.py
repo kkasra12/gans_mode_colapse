@@ -10,6 +10,8 @@ class RunIDAlreadyExistsException(Exception):
 
 
 class BaseLogger:
+    is_null = None
+
     def __init__(
         self, log_path: os.PathLike | str, run_id: str | int, resume: bool = False
     ):

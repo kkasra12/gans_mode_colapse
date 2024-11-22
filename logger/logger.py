@@ -1,4 +1,5 @@
 import os
+import warnings
 
 from sympy import li
 
@@ -9,17 +10,33 @@ from .wandb_logger import WandbLogger
 
 
 class NullLogger(BaseLogger):
+    is_null = True
+
     def if_run_id_exists(self, run_id: str | int):
-        return True
+        return False
 
     def resume_run_(self, run_id: str | int):
         pass
 
     def create_new_run_with_new_id(self) -> str:
+        warnings.warn(
+            "You are using the NullLogger. "
+            "Normally the code flow should not reach here. "
+            "Make sure you are using the correct logger. "
+        )
         return ""
 
     def create_new_run_with_id(self, run_id: str | int) -> str:
-        return ""
+        return run_id
+
+    def __setitem__(self, key, value):
+        pass
+
+    def __getitem__(self, key):
+        return None
+
+    def log(self, key: str, value):
+        pass
 
 
 class Logger:

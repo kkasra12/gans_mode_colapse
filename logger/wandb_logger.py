@@ -1,3 +1,4 @@
+from operator import is_
 import os
 
 import wandb
@@ -7,6 +8,7 @@ from .base_logger import BaseLogger
 
 
 class WandbLogger(BaseLogger):
+    is_null = False
     PROJECT_NAME = "gans_mode_colapse"
     # TODO: apparently, if we change the project name, it wont create a new project. Im not sure!
     ENTITY = "kkasra12"

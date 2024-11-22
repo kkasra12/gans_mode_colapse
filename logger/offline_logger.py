@@ -7,6 +7,8 @@ from .file import File
 
 
 class OfflinLogger(BaseLogger):
+    is_null = False
+
     def __init__(
         self, log_path: os.PathLike | str, run_id: str | int, resume: bool = False
     ):

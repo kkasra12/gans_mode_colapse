@@ -118,7 +118,7 @@ class Main:
     def train(
         self,
         num_epochs: int = 5,
-        checkpoint_dir: str | os.PathLike = "./checkpoints",
+        checkpoint_dir: str | os.PathLike = None,
         generate_images_per_epoch: int = 10,
         run_id: int = -1,
         continue_training: bool = False,
@@ -488,4 +488,4 @@ class Main:
 
 
 if __name__ == "__main__":
-    Main(lr=0.0001).train(num_epochs=3)
+    Main(lr=0.0001).train(num_epochs=3, checkpoint_dir=None)
