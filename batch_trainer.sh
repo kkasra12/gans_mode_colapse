@@ -20,7 +20,7 @@ export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK # Propagate Slurm 'cpus-per-task'
 echo "Running on $(hostname)"
 conda activate mode_colapse
 echo "Running main.py"
-srun --unbuffered python -m fire main.py Main --batch_size 256 --lr 0.0004 train --num_epochs 40
+srun --unbuffered python -m fire main.py Main --batch_size 256 --lr 0.002 train --num_epochs 40
 echo "Done"
 # to run this file we can use the following command
 # sbatch train_model.sh
