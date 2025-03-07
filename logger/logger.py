@@ -5,7 +5,6 @@ from sympy import li
 
 from .file import File
 from .base_logger import BaseLogger
-from .offline_logger import OfflinLogger
 from .wandb_logger import WandbLogger
 
 

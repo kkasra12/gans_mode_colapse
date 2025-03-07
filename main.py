@@ -143,10 +143,8 @@ class Main:
         """
 
         logger = Logger(
-            log_folder=checkpoint_dir,
             run_id=run_id,
             resume=continue_training,
-            use_wandb=use_wandb,
         )
 
         if not continue_training:
