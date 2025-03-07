@@ -13,12 +13,11 @@ class BaseLogger:
     is_null = None
 
     def __init__(
-        self, log_path: os.PathLike | str, run_id: str | int, resume: bool = False
+        self, run_id: str | int, resume: bool = False
     ):
         # TODO: instead of `resume`, we can use `run_id` to check if the run_id exists or not.
         # TODO: add a `read_only` parameter to the constructor. in the wandb_logger,
         #       if read_only is True, there is no need to call wandb.init and we can use wandb.Api().run(run_id) to check if the run_id exists or not.
-        self.log_path = log_path
         if run_id != -1 and isinstance(run_id, int):
             run_id = f"run_{run_id}"
         if resume:

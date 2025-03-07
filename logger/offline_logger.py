@@ -1,3 +1,7 @@
+# This file should not be used!
+raise RuntimeError("You should not use this file!\nDo not regret the past. Look to the future.\n\tSOYEN SHAKU")
+
+
 from datetime import datetime
 import json
 import os
